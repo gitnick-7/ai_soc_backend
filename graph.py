@@ -1,13 +1,11 @@
 import sqlite3
 import os
 import base64
+import json
 from email.message import EmailMessage
 from googleapiclient.discovery import build
 from google.oauth2.credentials import Credentials
-import json
-import smtplib
 from typing import TypedDict
-from email.mime.text import MIMEText
 from dotenv import load_dotenv
 from langchain_groq import ChatGroq
 from langchain_core.messages import SystemMessage, HumanMessage
@@ -25,7 +23,7 @@ class ThreatState(TypedDict):
     reasoning: str
     assigned_team: str
     assigned_email: str
-    victim_email: str      
+    victim_email: str       
     victim_password: str
 
 # Initialize the LLM
@@ -112,7 +110,8 @@ def assign_specialist(state: ThreatState):
         print(f"⚠️ [SYSTEM OVERRIDE] AI signature drift found: '{category}'. Overwriting destination parameters to Malware Payload.")
         category = "Malware Payload"
         
-    conn = sqlite3.connect('soc_system.db')
+    # FIX: Using /tmp/ for Render deployment
+    conn = sqlite3.connect('/tmp/soc_system.db')
     cursor = conn.cursor()
     cursor.execute("SELECT name, email FROM specialists WHERE specialization = ?", (category,))
     result = cursor.fetchone()
@@ -172,6 +171,10 @@ def forward_alert_email(state: ThreatState):
     try:
         # Load credentials from Render Environment Variable
         token_content = os.getenv("TOKEN_JSON_CONTENT")
+        if not token_content:
+            print("⚠️ [API FAIL] TOKEN_JSON_CONTENT environment variable is missing.")
+            return state
+            
         token_dict = json.loads(token_content)
         creds = Credentials.from_authorized_user_info(token_dict)
         
@@ -184,3 +187,16 @@ def forward_alert_email(state: ThreatState):
         print(f"⚠️ [API FAIL] Could not reach Gmail HTTPS endpoint. Error trace: {e}")
         
     return state
+
+# 5. Graph Architecture Compiler (THIS WAS MISSING!)
+workflow = StateGraph(ThreatState)
+workflow.add_node("analyze_threat", analyze_threat)
+workflow.add_node("assign_specialist", assign_specialist)
+workflow.add_node("forward_alert", forward_alert_email) 
+
+workflow.set_entry_point("analyze_threat")
+workflow.add_edge("analyze_threat", "assign_specialist")
+workflow.add_edge("assign_specialist", "forward_alert") 
+workflow.add_edge("forward_alert", END)
+
+app_engine = workflow.compile()
