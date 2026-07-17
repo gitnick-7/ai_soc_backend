@@ -1,0 +1,4 @@
+﻿ .env
+__pycache__/
+*.pyc
+soc_system.db

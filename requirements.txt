@@ -1,0 +1,10 @@
+fastapi
+uvicorn
+google-api-python-client
+google-auth-httplib2
+google-auth-oauthlib
+python-dotenv
+requests
+langchain-groq
+langchain-core
+langgraph
